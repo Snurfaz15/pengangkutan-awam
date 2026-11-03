@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JOM KENALI PETA MALAYSIA – MISI WIRA GEOGRAFI</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <!-- MediaPipe Hands CDN scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        myBlue: '#003399',
+                        myRed: '#CC0000',
+                        myYellow: '#FFCC00',
+                        myWhite: '#FFFFFF',
+                        myDarkBlue: '#001F5C'
+                    },
+                    fontFamily: {
+                        fredoka: ['"Fredoka One"', 'cursive'],
+                        nunito: ['"Nunito"', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Nunito', sans-serif;
+            background: linear-gradient(135deg, #001F5C 0%, #003399 50%, #001133 100%);
+            touch-action: none;
+            user-select: none;
+            overflow-x: hidden;
+        }
+
+        .font-title {
+            font-family: 'Fredoka One', cursive;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 4px solid #FFCC00;
+        }
+
+        .map-container {
+            position: relative;
+            width: 100%;
+            padding-bottom: 52%; /* Aspect ratio approx 1000x520 */
+            background-color: #e0f2fe;
+            border-radius: 1rem;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .map-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+        }
+
+        .drop-zone {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            border: 2px dashed #003399;
+            background-color: rgba(255, 255, 255, 0.7);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 11px;
+            color: #003399;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+            z-index: 10;
+        }
+
+        .drop-zone.matched {
+            border: 2px solid #16a34a;
+            background-color: #dcfce7;
+            color: #15803d;
+            box-shadow: 0 0 10px rgba(34, 197, 94, 0.6);
+        }
+
+        .drop-zone.hovered {
+            background-color: #fef08a;
+            border-color: #d97706;
+            transform: translate(-50%, -50%) scale(1.1);
+        }
+
+        .puzzle-card {
+            cursor: grab;
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+            touch-action: none;
+        }
+
+        .puzzle-card:active, .puzzle-card.dragging {
+            cursor: grabbing;
+            transform: scale(1.08);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            z-index: 500 !important;
+        }
+
+        .custom-cursor {
+            position: fixed;
+            width: 32px;
+            height: 32px;
+            border: 3px solid #FFCC00;
+            background-color: rgba(204, 0, 0, 0.6);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 9999;
+            transform: translate(-50%, -50%);
+            transition: width 0.1s, height 0.1s, background-color 0.1s;
+        }
+
+        .custom-cursor.pinched {
+            width: 20px;
+            height: 20px;
+            background-color: #10B981;
+            border-color: #FFFFFF;
+        }
+
+        @keyframes pulse-ring {
+            0% { transform: translate(-50%, -50%) scale(0.95); opacity: 0.8; }
+            50% { transform: translate(-50%, -50%) scale(1.05); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(0.95); opacity: 0.8; }
+        }
+
+        .pulse-anim {
+            animation: pulse-ring 2s infinite ease-in-out;
+        }
+
+        /* Responsive Map Coordinates logic */
+        @media (max-width: 768px) {
+            .drop-zone {
+                font-size: 8px;
+                padding: 1px 3px;
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800 flex flex-col justify-between">
+
+    <!-- Hand Cursor Overlay -->
+    <div id="handCursor" class="custom-cursor hidden"></div>
+
+    <!-- HEADER / NAVIGATION -->
+    <header class="bg-gradient-to-r from-myBlue via-myDarkBlue to-myBlue border-b-4 border-myYellow shadow-xl py-3 px-4 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3 cursor-pointer" onclick="showScreen('screen-home')">
+                <div class="w-12 h-12 bg-myYellow rounded-full flex items-center justify-center border-2 border-white shadow-md">
+                    <i class="fa-solid fa-map-location-dot text-2xl text-myBlue"></i>
+                </div>
+                <div>
+                    <h1 class="font-title text-xl md:text-2xl text-myYellow drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] tracking-wide">
+                        JOM KENALI PETA MALAYSIA
+                    </h1>
+                    <p class="text-xs text-white font-semibold tracking-wider">MISI WIRA GEOGRAFI</p>
+                </div>
+            </div>
+
+            <!-- Header Quick Info & Actions -->
+            <div class="flex items-center gap-2 md:gap-4">
+                <button onclick="toggleAudio()" id="btnAudioToggle" class="bg-white/10 hover:bg-white/20 text-white p-2.5 rounded-xl border border-white/20 transition" title="Mute/Unmute Audio">
+                    <i class="fa-solid fa-volume-high text-lg" id="iconAudio"></i>
+                </button>
+                <button onclick="showLeaderboard()" class="bg-myYellow hover:bg-yellow-400 text-myDarkBlue font-bold px-3 py-2 rounded-xl border-2 border-white shadow flex items-center gap-2 text-sm transition">
+                    <i class="fa-solid fa-trophy text-myRed"></i>
+                    <span class="hidden sm:inline">Kedudukan</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT CONTAINERS -->
+    <main class="flex-grow flex items-center justify-center p-2 sm:p-4">
+
+        <!-- ==================== 1. HOME SCREEN ==================== -->
+        <section id="screen-home" class="w-full max-w-4xl glass-panel rounded-3xl p-6 sm:p-10 shadow-2xl my-auto">
+            <div class="text-center space-y-6">
+                <!-- Title & Badge -->
+                <div class="inline-block bg-myRed text-white px-4 py-1 rounded-full text-sm font-black tracking-widest uppercase shadow-md mb-2">
+                    Edisi Sekolah Rendah 🇲🇾
+                </div>
+                <h2 class="font-title text-3xl sm:text-5xl text-myBlue drop-shadow-sm leading-tight">
+                    JOM KENALI PETA MALAYSIA
+                    <span class="block text-2xl sm:text-3xl text-myRed mt-1">MISI WIRA GEOGRAFI</span>
+                </h2>
+                
+                <p class="text-slate-600 font-semibold max-w-xl mx-auto text-sm sm:text-base">
+                    Uji pengetahuan anda tentang kedudukan 13 Negeri dan 3 Wilayah Persekutuan di Malaysia! Gunakan <span class="text-myRed font-bold">Webcam (Kawalan Jari)</span> atau <span class="text-myBlue font-bold">Tetikus / Skrin Sentuh</span>.
+                </p>
+
+                <!-- Action Buttons -->
+                <div class="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4 max-w-md mx-auto">
+                    <button onclick="showScreen('screen-player-info')" class="w-full bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-title text-xl py-4 px-8 rounded-2xl shadow-xl border-b-4 border-green-800 transition transform hover:-translate-y-1 flex items-center justify-center gap-3">
+                        <i class="fa-solid fa-play text-2xl"></i>
+                        <span>MULA PERMAINAN</span>
+                    </button>
+                    <button onclick="showInstructions()" class="w-full bg-gradient-to-r from-myBlue to-myDarkBlue hover:from-blue-700 hover:to-blue-900 text-white font-title text-lg py-4 px-6 rounded-2xl shadow-xl border-b-4 border-blue-950 transition transform hover:-translate-y-1 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-book-open text-xl text-myYellow"></i>
+                        <span>ARAHAN</span>
+                    </button>
+                </div>
+
+                <div class="pt-2">
+                    <button onclick="showLeaderboard()" class="text-myBlue hover:text-myRed font-bold text-sm underline flex items-center justify-center gap-1 mx-auto">
+                        <i class="fa-solid fa-medal"></i> Lihat Senarai Papar Kedudukan Pemain
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== 2. PLAYER INFO SCREEN ==================== -->
+        <section id="screen-player-info" class="w-full max-w-lg glass-panel rounded-3xl p-6 sm:p-8 shadow-2xl hidden">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-myBlue text-myYellow rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg border-2 border-white">
+                    <i class="fa-solid fa-user-astronaut text-3xl"></i>
+                </div>
+                <h3 class="font-title text-2xl text-myBlue">MAKLUMAT WIRA GEOGRAFI</h3>
+                <p class="text-xs text-slate-500">Sila isi maklumat diri anda sebelum memulakan cabaran.</p>
+            </div>
+
+            <form id="formPlayer" onsubmit="handleStartGame(event)" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1">
+                        <i class="fa-solid fa-signature text-myRed mr-1"></i> Nama Pemain:
+                    </label>
+                    <input type="text" id="inputPlayerName" required placeholder="Contoh: Muhammad Ali" class="w-full px-4 py-3 rounded-xl border-2 border-slate-300 focus:border-myBlue focus:outline-none font-bold text-slate-800 bg-white/80">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1">
+                        <i class="fa-solid fa-school text-myBlue mr-1"></i> Kelas:
+                    </label>
+                    <input type="text" id="inputPlayerClass" required placeholder="Contoh: 5 Cemerlang" class="w-full px-4 py-3 rounded-xl border-2 border-slate-300 focus:border-myBlue focus:outline-none font-bold text-slate-800 bg-white/80">
+                </div>
+
+                <!-- Input Image Map Selection Option -->
+                <div class="bg-blue-50 p-3 rounded-xl border border-blue-200">
+                    <label class="block text-xs font-bold text-myBlue mb-1">
+                        <i class="fa-solid fa-image mr-1"></i> Gambar Peta Malaysia (Fail / URL Fallback):
+                    </label>
+                    <input type="text" id="inputMapUrl" placeholder="Masukkan URL Imej Peta (Opsional)" class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white">
+                    <p class="text-[10px] text-slate-500 mt-1">*Jika kososng, imej peta standard Malaysia definisi tinggi akan digunakan secara automatik.</p>
+                </div>
+
+                <div class="pt-4 flex gap-3">
+                    <button type="button" onclick="showScreen('screen-home')" class="w-1/3 bg-slate-300 hover:bg-slate-400 text-slate-800 font-bold py-3 rounded-xl transition">
+                        Batal
+                    </button>
+                    <button type="submit" class="w-2/3 bg-gradient-to-r from-myRed to-rose-700 hover:from-red-700 hover:to-rose-800 text-white font-title text-lg py-3 rounded-xl shadow-lg border-b-4 border-red-900 transition flex items-center justify-center gap-2">
+                        <span>SERTAI MISI!</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- ==================== 3. GAMEPLAY SCREEN ==================== -->
+        <section id="screen-game" class="w-full max-w-6xl glass-panel rounded-3xl p-3 sm:p-5 shadow-2xl hidden flex flex-col gap-3">
+            
+            <!-- TOP BAR (Stats) -->
+            <div class="bg-gradient-to-r from-myBlue to-myDarkBlue text-white rounded-2xl p-3 flex flex-wrap items-center justify-between gap-2 shadow-inner border border-white/20">
+                <div class="flex items-center gap-2">
+                    <div class="bg-white/20 p-2 rounded-xl">
+                        <i class="fa-solid fa-user-ninja text-myYellow text-xl"></i>
+                    </div>
+                    <div>
+                        <div id="displayPlayerInfo" class="font-bold text-sm text-myYellow leading-tight">Pemain: -</div>
+                        <div id="displayPlayerClass" class="text-xs text-white/80 leading-tight">Kelas: -</div>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3 sm:gap-6 font-title">
+                    <!-- Skor -->
+                    <div class="flex items-center gap-1.5 bg-black/30 px-3 py-1.5 rounded-xl border border-white/10">
+                        <i class="fa-solid fa-star text-myYellow text-lg"></i>
+                        <span id="displayScore" class="text-xl text-myYellow">0</span>
+                    </div>
+
+                    <!-- Nyawa -->
+                    <div class="flex items-center gap-1 bg-black/30 px-3 py-1.5 rounded-xl border border-white/10" title="Baki Nyawa">
+                        <i class="fa-solid fa-heart text-myRed text-lg"></i>
+                        <span id="displayLives" class="text-xl text-white">3</span>
+                    </div>
+
+                    <!-- Masa -->
+                    <div class="flex items-center gap-1.5 bg-black/30 px-3 py-1.5 rounded-xl border border-white/10">
+                        <i class="fa-solid fa-clock text-sky-400 text-lg"></i>
+                        <span id="displayTimer" class="text-xl text-sky-200">00:00</span>
+                    </div>
+                </div>
+
+                <!-- Webcam Toggle & Status -->
+                <div class="flex items-center gap-2">
+                    <button onclick="toggleWebcam()" id="btnWebcam" class="bg-myYellow hover:bg-yellow-400 text-myDarkBlue font-bold text-xs px-3 py-2 rounded-xl flex items-center gap-1.5 border border-white shadow transition">
+                        <i class="fa-solid fa-video" id="iconWebcam"></i>
+                        <span id="textWebcam">Aktifkan Webcam</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- PROGRESS BAR -->
+            <div class="bg-slate-200 rounded-full h-4 overflow-hidden border border-slate-300 relative shadow-inner">
+                <div id="progressBar" class="bg-gradient-to-r from-myYellow via-amber-500 to-green-500 h-full w-0 transition-all duration-300"></div>
+                <div id="progressText" class="absolute inset-0 flex items-center justify-center text-[10px] font-black text-slate-800">
+                    Puzzle Berjaya: 0/16 (0%)
+                </div>
+            </div>
+
+            <!-- MAIN GAME AREA (MAP + WEBCAM OVERLAY) -->
+            <div class="relative w-full bg-slate-900 rounded-2xl p-1 border-2 border-slate-700 shadow-xl overflow-hidden">
+                
+                <!-- WEBCAM FEED (Small Picture-in-Picture window bottom right or background) -->
+                <div id="webcamContainer" class="absolute top-3 right-3 z-30 w-32 sm:w-44 bg-black/80 border-2 border-myYellow rounded-xl overflow-hidden shadow-2xl transition-all hidden">
+                    <video id="webcamVideo" class="w-full h-auto transform -scale-x-100" playsinline></video>
+                    <canvas id="webcamCanvas" class="absolute top-0 left-0 w-full h-full transform -scale-x-100"></canvas>
+                    <div class="bg-black/70 text-white text-[9px] font-bold text-center py-0.5">
+                        <span id="gestureStatus">Mengesan Tangan...</span>
+                    </div>
+                </div>
+
+                <!-- MAP PUZZLE CANVAS CONTAINER -->
+                <div id="mapBoard" class="map-container">
+                    <!-- Map Image -->
+                    <img id="mapImage" src="https://upload.wikimedia.org/wikipedia/commons/2/23/Malaysia_location_map.svg" alt="Peta Malaysia" class="map-bg" onerror="handleMapError(this)">
+                    
+                    <!-- Drop Zones will be injected here dynamically -->
+                    <div id="dropZoneLayer"></div>
+                </div>
+            </div>
+
+            <!-- PUZZLE CARDS CONTAINER (Bottom Drawer) -->
+            <div class="bg-white/90 p-3 rounded-2xl border-2 border-myBlue shadow-inner">
+                <div class="text-xs font-black text-myBlue mb-2 flex justify-between items-center">
+                    <span><i class="fa-solid fa-puzzle-piece text-myRed mr-1"></i> TARIK KAD NEGERI / WILAYAH KE PETA:</span>
+                    <span class="text-[10px] text-slate-500 font-semibold">*Gunakan tetikus/sentuhan atau cubit jari (pinch) webcam</span>
+                </div>
+                <div id="puzzleCardsDeck" class="flex flex-wrap gap-2 justify-center max-h-36 overflow-y-auto p-1">
+                    <!-- Puzzle cards injected dynamically -->
+                </div>
+            </div>
+
+        </section>
+
+        <!-- ==================== 4. LEADERBOARD MODAL ==================== -->
+        <div id="modalLeaderboard" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+            <div class="glass-panel w-full max-w-2xl rounded-3xl p-6 shadow-2xl max-h-[90vh] flex flex-col">
+                <div class="flex justify-between items-center mb-4 border-b border-slate-200 pb-3">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-trophy text-3xl text-myYellow drop-shadow"></i>
+                        <h3 class="font-title text-2xl text-myBlue">CARTA KEDUDUKAN PEMAIN</h3>
+                    </div>
+                    <button onclick="closeLeaderboard()" class="text-slate-400 hover:text-myRed text-2xl">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+
+                <div class="flex-grow overflow-y-auto pr-1">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-myBlue text-white text-xs font-bold uppercase rounded-xl">
+                                <th class="p-3 rounded-l-xl">Ked.</th>
+                                <th class="p-3">Nama</th>
+                                <th class="p-3">Kelas</th>
+                                <th class="p-3">Skor</th>
+                                <th class="p-3">Masa</th>
+                                <th class="p-3 rounded-r-xl">Nyawa</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboardBody" class="text-sm font-semibold text-slate-700 divide-y divide-slate-100">
+                            <tr>
+                                <td colspan="6" class="text-center py-6 text-slate-400">Memuatkan data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-200 flex justify-end">
+                    <button onclick="closeLeaderboard()" class="bg-myBlue hover:bg-blue-800 text-white font-bold px-6 py-2 rounded-xl text-sm transition">
+                        Tutup
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 5. INSTRUCTIONS MODAL ==================== -->
+        <div id="modalInstructions" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+            <div class="glass-panel w-full max-w-xl rounded-3xl p-6 shadow-2xl max-h-[90vh] flex flex-col">
+                <div class="flex justify-between items-center mb-4 border-b border-slate-200 pb-3">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-circle-info text-3xl text-myBlue"></i>
+                        <h3 class="font-title text-2xl text-myBlue">ARAHAN PERMAINAN</h3>
+                    </div>
+                    <button onclick="closeInstructions()" class="text-slate-400 hover:text-myRed text-2xl">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+
+                <div class="space-y-4 text-slate-700 text-sm overflow-y-auto pr-1 font-medium">
+                    <div class="bg-blue-50 p-3 rounded-xl border border-blue-200">
+                        <h4 class="font-bold text-myBlue flex items-center gap-2 mb-1">
+                            <i class="fa-solid fa-hand-pointer"></i> Kawalan Webcam (MediaPipe Hands):
+                        </h4>
+                        <ul class="list-disc list-inside space-y-1 text-xs">
+                            <li>Benarkan kebenaran akses Webcam komputer anda.</li>
+                            <li>Tunjukkan tangan anda di hadapan kamera.</li>
+                            <li>Gunakan <span class="font-bold text-myRed">Pinch Gesture</span> (temukan hujung Ibu Jari & Jari Telunjuk) untuk memegang kad.</li>
+                            <li>Bawa kad ke lokasi peta yang betul & lepaskan pinch untuk meletakkan kad.</li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-amber-50 p-3 rounded-xl border border-amber-200">
+                        <h4 class="font-bold text-amber-800 flex items-center gap-2 mb-1">
+                            <i class="fa-solid fa-mouse"></i> Kawalan Tetikus / Skrin Sentuh:
+                        </h4>
+                        <p class="text-xs">Klik/sentuh dan tarik (drag and drop) kad nama ke kawasan peta sasaran.</p>
+                    </div>
+
+                    <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-200">
+                        <h4 class="font-bold text-emerald-800 flex items-center gap-2 mb-1">
+                            <i class="fa-solid fa-bullseye"></i> Peraturan Pemarkahan:
+                        </h4>
+                        <ul class="list-disc list-inside space-y-1 text-xs">
+                            <li>Setiap padanan BETUL: <span class="font-bold text-green-600">+10 Markah</span>.</li>
+                            <li>Setiap kesalahan: <span class="font-bold text-myRed">-1 Nyawa</span> (Bermula dengan 3 Nyawa).</li>
+                            <li>Selesaikan semua 16 lokasi terpantas untuk menjadi Wira Geografi!</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-200 flex justify-end">
+                    <button onclick="closeInstructions()" class="bg-myBlue hover:bg-blue-800 text-white font-bold px-6 py-2 rounded-xl text-sm transition">
+                        Faham & Tutup
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 6. GAME OVER / WIN MODAL ==================== -->
+        <div id="modalEndGame" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+            <div class="glass-panel w-full max-w-md rounded-3xl p-8 shadow-2xl text-center transform transition-all">
+                
+                <div id="endIconContainer" class="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-xl">
+                    <!-- Dynamic Icon -->
+                </div>
+
+                <h3 id="endTitle" class="font-title text-3xl mb-1">TAHNIAH!</h3>
+                <p id="endSubtitle" class="text-slate-600 text-sm font-semibold mb-4">Anda telah menyelesaikan MISI WIRA GEOGRAFI!</p>
+
+                <!-- Summary Stats -->
+                <div class="bg-slate-100 rounded-2xl p-4 space-y-2 mb-6 text-left border border-slate-200">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-500 font-bold">Pemain:</span>
+                        <span id="endPlayerName" class="font-bold text-slate-800">-</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-500 font-bold">Kelas:</span>
+                        <span id="endPlayerClass" class="font-bold text-slate-800">-</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-500 font-bold">Jumlah Skor:</span>
+                        <span id="endScore" class="font-bold text-myYellow bg-myDarkBlue px-2 py-0.5 rounded text-base">0</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-500 font-bold">Masa Diambil:</span>
+                        <span id="endTime" class="font-bold text-sky-700">00:00</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-500 font-bold">Baki Nyawa:</span>
+                        <span id="endLives" class="font-bold text-myRed">3</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-500 font-bold">Puzzle Selesai:</span>
+                        <span id="endCompleted" class="font-bold text-green-600">16 / 16</span>
+                    </div>
+                </div>
+
+                <div id="saveStatusMsg" class="text-xs font-bold text-blue-600 mb-4 animate-pulse">
+                    Menyimpan rekod ke Google Sheets...
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex gap-3">
+                    <button onclick="restartGame()" class="w-1/2 bg-myYellow hover:bg-yellow-400 text-myDarkBlue font-title text-base py-3 rounded-xl shadow-lg border-b-4 border-yellow-600 transition">
+                        <i class="fa-solid fa-rotate-right mr-1"></i> MAIN SEMULA
+                    </button>
+                    <button onclick="showScreen('screen-home')" class="w-1/2 bg-myBlue hover:bg-blue-800 text-white font-title text-base py-3 rounded-xl shadow-lg border-b-4 border-blue-950 transition">
+                        <i class="fa-solid fa-house mr-1"></i> MENU UTAMA
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="bg-myDarkBlue text-white/70 text-center py-2 text-xs border-t border-white/10">
+        <p>© 2026 JOM KENALI PETA MALAYSIA – Hak Cipta Terpelihara. Pembangunan Permainan Pendidikan Interaktif.</p>
+    </footer>
+
+    <!-- LOGIC SCRIPT -->
+    <script>
+        /* ==================== 1. CONFIGURATION & LOCATIONS DATA ==================== */
+        // 16 Locations: 13 States + 3 Federal Territories with relative percentage coordinates (x, y on standard map image)
+        const MALAYSIA_LOCATIONS = [
+            { id: 'perlis', name: 'Perlis', x: 7.5, y: 14.5 },
+            { id: 'kedah', name: 'Kedah', x: 10.5, y: 22.0 },
+            { id: 'pulau_pinang', name: 'Pulau Pinang', x: 7.8, y: 30.0 },
+            { id: 'perak', name: 'Perak', x: 14.5, y: 39.0 },
+            { id: 'kelantan', name: 'Kelantan', x: 23.5, y: 25.0 },
+            { id: 'terengganu', name: 'Terengganu', x: 30.5, y: 33.0 },
+            { id: 'pahang', name: 'Pahang', x: 25.5, y: 48.0 },
+            { id: 'selangor', name: 'Selangor', x: 16.5, y: 55.0 },
+            { id: 'kuala_lumpur', name: 'Kuala Lumpur', x: 18.5, y: 58.5 },
+            { id: 'putrajaya', name: 'Putrajaya', x: 18.2, y: 64.0 },
+            { id: 'negeri_sembilan', name: 'Negeri Sembilan', x: 21.0, y: 65.0 },
+            { id: 'melaka', name: 'Melaka', x: 21.5, y: 73.0 },
+            { id: 'johor', name: 'Johor', x: 27.5, y: 76.0 },
+            { id: 'labuan', name: 'Labuan', x: 71.5, y: 37.0 },
+            { id: 'sabah', name: 'Sabah', x: 86.0, y: 30.0 },
+            { id: 'sarawak', name: 'Sarawak', x: 61.0, y: 65.0 }
+        ];
+
+        // Sound System (Web Audio API synthetizer for clean offline audio feedback)
+        class SoundSystem {
+            constructor() {
+                this.audioCtx = null;
+                this.enabled = true;
+            }
+            init() {
+                if (!this.audioCtx) {
+                    this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+            playCorrect() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.audioCtx.currentTime;
+                const osc = this.audioCtx.createOscillator();
+                const gain = this.audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(523.25, now); // C5
+                osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.1); // E5
+                osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.2); // G5
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                osc.connect(gain);
+                gain.connect(this.audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            }
+            playWrong() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.audioCtx.currentTime;
+                const osc = this.audioCtx.createOscillator();
+                const gain = this.audioCtx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(220, now);
+                osc.frequency.setValueAtTime(140, now + 0.15);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+                osc.connect(gain);
+                gain.connect(this.audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.35);
+            }
+            playWin() {
+                if (!this.enabled) return;
+                this.init();
+                const notes = [440, 554.37, 659.25, 880];
+                notes.forEach((freq, idx) => {
+                    setTimeout(() => {
+                        const now = this.audioCtx.currentTime;
+                        const osc = this.audioCtx.createOscillator();
+                        const gain = this.audioCtx.createGain();
+                        osc.frequency.setValueAtTime(freq, now);
+                        gain.gain.setValueAtTime(0.3, now);
+                        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                        osc.connect(gain);
+                        gain.connect(this.audioCtx.destination);
+                        osc.start(now);
+                        osc.stop(now + 0.3);
+                    }, idx * 120);
+                });
+            }
+        }
+        const sounds = new SoundSystem();
+
+        /* ==================== 2. GAME STATE ==================== */
+        let gameState = {
+            playerName: '',
+            playerClass: '',
+            score: 0,
+            lives: 3,
+            completedCount: 0,
+            timerSeconds: 0,
+            timerInterval: null,
+            isGameOver: false,
+            placedLocations: new Set(),
+            mapCustomUrl: ''
+        };
+
+        // Leaderboard Local Memory Data (fallback if GAS backend unavailable)
+        let localLeaderboard = [
+            { name: 'Adam Haris', class: '5 Cemerlang', score: 160, time: '01:15', lives: 3 },
+            { name: 'Nur Aisyah', class: '6 Bijak', score: 150, time: '01:40', lives: 2 },
+            { name: 'Chong Wei', class: '4 Pintar', score: 140, time: '02:05', lives: 2 }
+        ];
+
+        /* ==================== 3. WEBCAM & MEDIAPIPE HANDS LOGIC ==================== */
+        let webcamActive = false;
+        let cameraInstance = null;
+        let handsInstance = null;
+        let isPinchActive = false;
+        let currentPinchTarget = null;
+        let pinchOffsetX = 0;
+        let pinchOffsetY = 0;
+
+        async function initMediaPipeHands() {
+            const videoElement = document.getElementById('webcamVideo');
+            const canvasElement = document.getElementById('webcamCanvas');
+            const canvasCtx = canvasElement.getContext('2d');
+
+            handsInstance = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+
+            handsInstance.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.6,
+                minTrackingConfidence: 0.6
+            });
+
+            handsInstance.onResults((results) => {
+                // Resize canvas matching video
+                canvasElement.width = videoElement.videoWidth || 160;
+                canvasElement.height = videoElement.videoHeight || 120;
+                canvasCtx.save();
+                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+                const gestureStatus = document.getElementById('gestureStatus');
+                const cursorEl = document.getElementById('handCursor');
+
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    const landmarks = results.multiHandLandmarks[0];
+
+                    // Draw skeleton on small canvas preview
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#FFCC00', lineWidth: 2 });
+                    drawLandmarks(canvasCtx, landmarks, { color: '#CC0000', lineWidth: 1, radius: 3 });
+
+                    // Index Finger Tip (Landmark 8) & Thumb Tip (Landmark 4)
+                    const indexTip = landmarks[8];
+                    const thumbTip = landmarks[4];
+
+                    // Screen Coordinates (Mirroring accounted)
+                    const cursorX = (1 - indexTip.x) * window.innerWidth;
+                    const cursorY = indexTip.y * window.innerHeight;
+
+                    // Update Virtual Cursor position
+                    cursorEl.style.left = `${cursorX}px`;
+                    cursorEl.style.top = `${cursorY}px`;
+                    cursorEl.classList.remove('hidden');
+
+                    // Calculate Distance for Pinch Gesture
+                    const distance = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y, indexTip.z - thumbTip.z);
+                    const PINCH_THRESHOLD = 0.07;
+
+                    if (distance < PINCH_THRESHOLD) {
+                        // PINCH ON (Grab)
+                        cursorEl.classList.add('pinched');
+                        gestureStatus.innerText = 'PINCH (MEMEGANG)';
+                        gestureStatus.className = 'text-green-400 font-bold';
+
+                        if (!isPinchActive) {
+                            isPinchActive = true;
+                            handleGestureStart(cursorX, cursorY);
+                        } else {
+                            handleGestureMove(cursorX, cursorY);
+                        }
+                    } else {
+                        // PINCH OFF (Release)
+                        cursorEl.classList.remove('pinched');
+                        gestureStatus.innerText = 'DISAN TANGAN';
+                        gestureStatus.className = 'text-myYellow font-bold';
+
+                        if (isPinchActive) {
+                            isPinchActive = false;
+                            handleGestureEnd(cursorX, cursorY);
+                        }
+                    }
+                } else {
+                    cursorEl.classList.add('hidden');
+                    gestureStatus.innerText = 'Cari Tangan...';
+                    gestureStatus.className = 'text-slate-300';
+                    if (isPinchActive) {
+                        isPinchActive = false;
+                        handleGestureEnd(0, 0);
+                    }
+                }
+                canvasCtx.restore();
+            });
+        }
+
+        async function toggleWebcam() {
+            const webcamContainer = document.getElementById('webcamContainer');
+            const videoElement = document.getElementById('webcamVideo');
+            const btnText = document.getElementById('textWebcam');
+            const btnIcon = document.getElementById('iconWebcam');
+
+            if (!webcamActive) {
+                try {
+                    if (!handsInstance) await initMediaPipeHands();
+
+                    cameraInstance = new Camera(videoElement, {
+                        onFrame: async () => {
+                            await handsInstance.send({ image: videoElement });
+                        },
+                        width: 320,
+                        height: 240
+                    });
+
+                    await cameraInstance.start();
+                    webcamActive = true;
+                    webcamContainer.classList.remove('hidden');
+                    btnText.innerText = 'Nyahaktif Webcam';
+                    btnIcon.className = 'fa-solid fa-video-slash text-myRed';
+                } catch (err) {
+                    console.error('Kamera gagal dibuka:', err);
+                    alert('Tidak dapat mengaktifkan webcam. Sila pastikan anda memberi kebenaran penggunaan kamera.');
+                }
+            } else {
+                if (cameraInstance) {
+                    await cameraInstance.stop();
+                }
+                webcamActive = false;
+                webcamContainer.classList.add('hidden');
+                document.getElementById('handCursor').classList.add('hidden');
+                btnText.innerText = 'Aktifkan Webcam';
+                btnIcon.className = 'fa-solid fa-video';
+            }
+        }
+
+        /* ==================== 4. GESTURE & DRAG-DROP DRIVER ==================== */
+        function handleGestureStart(x, y) {
+            // Find element under cursor
+            const elem = document.elementFromPoint(x, y);
+            if (!elem) return;
+
+            const card = elem.closest('.puzzle-card');
+            if (card && !card.classList.contains('matched')) {
+                currentPinchTarget = card;
+                const rect = card.getBoundingClientRect();
+                pinchOffsetX = x - rect.left;
+                pinchOffsetY = y - rect.top;
+
+                card.classList.add('dragging');
+                card.style.position = 'fixed';
+                card.style.zIndex = '999';
+                card.style.left = `${x - pinchOffsetX}px`;
+                card.style.top = `${y - pinchOffsetY}px`;
+            }
+        }
+
+        function handleGestureMove(x, y) {
+            if (currentPinchTarget) {
+                currentPinchTarget.style.left = `${x - pinchOffsetX}px`;
+                currentPinchTarget.style.top = `${y - pinchOffsetY}px`;
+            }
+        }
+
+        function handleGestureEnd(x, y) {
+            if (currentPinchTarget) {
+                const card = currentPinchTarget;
+                const cardId = card.getAttribute('data-id');
+
+                // Check collision with drop zones
+                const dropZones = document.querySelectorAll('.drop-zone');
+                let placed = false;
+
+                dropZones.forEach(zone => {
+                    const zoneRect = zone.getBoundingClientRect();
+                    const cardRect = card.getBoundingClientRect();
+
+                    // Check center point collision
+                    const cardCenterX = cardRect.left + cardRect.width / 2;
+                    const cardCenterY = cardRect.top + cardRect.height / 2;
+
+                    if (cardCenterX >= zoneRect.left && cardCenterX <= zoneRect.right &&
+                        cardCenterY >= zoneRect.top && cardCenterY <= zoneRect.bottom) {
+                        
+                        const targetId = zone.getAttribute('data-id');
+                        if (targetId === cardId) {
+                            // CORRECT MATCH
+                            onCorrectMatch(card, zone);
+                            placed = true;
+                        } else {
+                            // WRONG MATCH
+                            onWrongMatch(card);
+                            placed = true;
+                        }
+                    }
+                });
+
+                if (!placed) {
+                    resetCardPosition(card);
+                }
+
+                card.classList.remove('dragging');
+                currentPinchTarget = null;
+            }
+        }
+
+        /* Mouse & Touch Traditional Fallback Handler */
+        function setupMouseAndTouchEvents(card) {
+            let isDragging = false;
+            let startX, startY, initialLeft, initialTop;
+
+            const onStart = (e) => {
+                if (card.classList.contains('matched')) return;
+                isDragging = true;
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+                const rect = card.getBoundingClientRect();
+                startX = clientX - rect.left;
+                startY = clientY - rect.top;
+
+                card.classList.add('dragging');
+                card.style.position = 'fixed';
+                card.style.zIndex = '999';
+                card.style.left = `${clientX - startX}px`;
+                card.style.top = `${clientY - startY}px`;
+            };
+
+            const onMove = (e) => {
+                if (!isDragging) return;
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+                card.style.left = `${clientX - startX}px`;
+                card.style.top = `${clientY - startY}px`;
+            };
+
+            const onEnd = (e) => {
+                if (!isDragging) return;
+                isDragging = false;
+                const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+                const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+
+                // Test drop target
+                let placed = false;
+                const dropZones = document.querySelectorAll('.drop-zone');
+
+                dropZones.forEach(zone => {
+                    const zoneRect = zone.getBoundingClientRect();
+                    if (clientX >= zoneRect.left && clientX <= zoneRect.right &&
+                        clientY >= zoneRect.top && clientY <= zoneRect.bottom) {
+                        
+                        const cardId = card.getAttribute('data-id');
+                        const targetId = zone.getAttribute('data-id');
+
+                        if (targetId === cardId) {
+                            onCorrectMatch(card, zone);
+                            placed = true;
+                        } else {
+                            onWrongMatch(card);
+                            placed = true;
+                        }
+                    }
+                });
+
+                if (!placed) {
+                    resetCardPosition(card);
+                }
+                card.classList.remove('dragging');
+            };
+
+            card.addEventListener('mousedown', onStart);
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onEnd);
+
+            card.addEventListener('touchstart', onStart, { passive: false });
+            window.addEventListener('touchmove', onMove, { passive: false });
+            window.addEventListener('touchend', onEnd);
+        }
+
+        /* ==================== 5. GAME LOGIC ENGINE ==================== */
+        function handleStartGame(e) {
+            e.preventDefault();
+            const name = document.getElementById('inputPlayerName').value.trim();
+            const cls = document.getElementById('inputPlayerClass').value.trim();
+            const mapUrl = document.getElementById('inputMapUrl').value.trim();
+
+            if (!name || !cls) return;
+
+            gameState.playerName = name;
+            gameState.playerClass = cls;
+            gameState.score = 0;
+            gameState.lives = 3;
+            gameState.completedCount = 0;
+            gameState.timerSeconds = 0;
+            gameState.isGameOver = false;
+            gameState.placedLocations.clear();
+
+            if (mapUrl) {
+                document.getElementById('mapImage').src = mapUrl;
+            }
+
+            document.getElementById('displayPlayerInfo').innerText = `Pemain: ${name}`;
+            document.getElementById('displayPlayerClass').innerText = `Kelas: ${cls}`;
+            updateUI();
+
+            showScreen('screen-game');
+            initBoard();
+            startTimer();
+        }
+
+        function initBoard() {
+            const dropZoneLayer = document.getElementById('dropZoneLayer');
+            const cardsDeck = document.getElementById('puzzleCardsDeck');
+
+            dropZoneLayer.innerHTML = '';
+            cardsDeck.innerHTML = '';
+
+            // 1. Render Drop Zones on Map
+            MALAYSIA_LOCATIONS.forEach(loc => {
+                const zone = document.createElement('div');
+                zone.className = 'drop-zone';
+                zone.setAttribute('data-id', loc.id);
+                zone.style.left = `${loc.x}%`;
+                zone.style.top = `${loc.y}%`;
+                zone.innerText = '?';
+                dropZoneLayer.appendChild(zone);
+            });
+
+            // 2. Shuffle & Render Cards Deck
+            const shuffled = [...MALAYSIA_LOCATIONS].sort(() => Math.random() - 0.5);
+            shuffled.forEach(loc => {
+                const card = document.createElement('div');
+                card.className = 'puzzle-card bg-white border-2 border-myBlue text-myDarkBlue font-bold px-3 py-1.5 rounded-xl shadow-md text-xs sm:text-sm select-none hover:bg-yellow-100 flex items-center gap-1.5';
+                card.setAttribute('data-id', loc.id);
+                card.innerHTML = `<i class="fa-solid fa-location-dot text-myRed text-xs"></i><span>${loc.name}</span>`;
+                
+                setupMouseAndTouchEvents(card);
+                cardsDeck.appendChild(card);
+            });
+        }
+
+        function onCorrectMatch(card, zone) {
+            const locId = card.getAttribute('data-id');
+            const locData = MALAYSIA_LOCATIONS.find(l => l.id === locId);
+
+            gameState.score += 10;
+            gameState.completedCount += 1;
+            gameState.placedLocations.add(locId);
+
+            sounds.playCorrect();
+
+            // Style Matched Drop Zone
+            zone.classList.add('matched');
+            zone.innerText = locData.name;
+
+            // Remove card from deck
+            card.remove();
+
+            updateUI();
+
+            // Check Win Condition
+            if (gameState.completedCount === MALAYSIA_LOCATIONS.length) {
+                endGame(true);
+            }
+        }
+
+        function onWrongMatch(card) {
+            gameState.lives -= 1;
+            sounds.playWrong();
+
+            // Screen shake / warning animation
+            const gameScreen = document.getElementById('screen-game');
+            gameScreen.classList.add('animate-bounce');
+            setTimeout(() => gameScreen.classList.remove('animate-bounce'), 400);
+
+            resetCardPosition(card);
+            updateUI();
+
+            // Check Lose Condition
+            if (gameState.lives <= 0) {
+                endGame(false);
+            }
+        }
+
+        function resetCardPosition(card) {
+            card.style.position = 'relative';
+            card.style.left = '0px';
+            card.style.top = '0px';
+            card.style.zIndex = '1';
+        }
+
+        function updateUI() {
+            document.getElementById('displayScore').innerText = gameState.score;
+            document.getElementById('displayLives').innerText = gameState.lives;
+
+            // Progress Bar
+            const total = MALAYSIA_LOCATIONS.length;
+            const pct = Math.round((gameState.completedCount / total) * 100);
+            document.getElementById('progressBar').style.width = `${pct}%`;
+            document.getElementById('progressText').innerText = `Puzzle Berjaya: ${gameState.completedCount}/${total} (${pct}%)`;
+        }
+
+        function startTimer() {
+            clearInterval(gameState.timerInterval);
+            gameState.timerSeconds = 0;
+            gameState.timerInterval = setInterval(() => {
+                gameState.timerSeconds++;
+                const mins = String(Math.floor(gameState.timerSeconds / 60)).padStart(2, '0');
+                const secs = String(gameState.timerSeconds % 60).padStart(2, '0');
+                document.getElementById('displayTimer').innerText = `${mins}:${secs}`;
+            }, 1000);
+        }
+
+        function stopTimer() {
+            clearInterval(gameState.timerInterval);
+        }
+
+        /* ==================== 6. END GAME & GOOGLE SHEETS INTEGRATION ==================== */
+        function endGame(isWin) {
+            stopTimer();
+            gameState.isGameOver = true;
+
+            const modal = document.getElementById('modalEndGame');
+            const iconContainer = document.getElementById('endIconContainer');
+            const title = document.getElementById('endTitle');
+            const subtitle = document.getElementById('endSubtitle');
+
+            const mins = String(Math.floor(gameState.timerSeconds / 60)).padStart(2, '0');
+            const secs = String(gameState.timerSeconds % 60).padStart(2, '0');
+            const formattedTime = `${mins}:${secs}`;
+
+            document.getElementById('endPlayerName').innerText = gameState.playerName;
+            document.getElementById('endPlayerClass').innerText = gameState.playerClass;
+            document.getElementById('endScore').innerText = gameState.score;
+            document.getElementById('endTime').innerText = formattedTime;
+            document.getElementById('endLives').innerText = gameState.lives;
+            document.getElementById('endCompleted').innerText = `${gameState.completedCount} / 16`;
+
+            if (isWin) {
+                sounds.playWin();
+                iconContainer.className = 'w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-xl bg-emerald-500 text-white';
+                iconContainer.innerHTML = '<i class="fa-solid fa-trophy text-5xl"></i>';
+                title.innerText = 'TAHNIAH! MISI SYABAS!';
+                title.className = 'font-title text-3xl text-emerald-600 mb-1';
+                subtitle.innerText = 'Anda Berjaya Menjadi Wira Geografi Malaysia!';
+            } else {
+                iconContainer.className = 'w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-xl bg-myRed text-white';
+                iconContainer.innerHTML = '<i class="fa-solid fa-face-frown text-5xl"></i>';
+                title.innerText = 'PERMAINAN TAMAT!';
+                title.className = 'font-title text-3xl text-myRed mb-1';
+                subtitle.innerText = 'Jangan Putus Asa. Cuba lagi untuk kuasai Peta Malaysia!';
+            }
+
+            modal.classList.remove('hidden');
+
+            // Save Record to Google Sheets / Local Storage
+            savePlayerRecord(gameState.playerName, gameState.playerClass, gameState.score, formattedTime, gameState.lives);
+        }
+
+        function savePlayerRecord(name, cls, score, timeStr, lives) {
+            const msgEl = document.getElementById('saveStatusMsg');
+            msgEl.innerText = 'Menyimpan rekod permainan ke Google Sheets...';
+
+            const recordData = {
+                name: name,
+                class: cls,
+                score: score,
+                time: timeStr,
+                lives: lives,
+                timestamp: new Date().toISOString()
+            };
+
+            // Save locally for fallback leaderboard
+            localLeaderboard.push({ name, class: cls, score, time: timeStr, lives });
+            localLeaderboard.sort((a, b) => b.score - a.score);
+
+            // Google Apps Script Call (if running inside GAS Web App context)
+            if (typeof google !== 'undefined' && google.script && google.script.run) {
+                google.script.run
+                    .withSuccessHandler((res) => {
+                        msgEl.innerText = '✅ Rekod berjaya disimpan di Google Sheets!';
+                        msgEl.className = 'text-xs font-bold text-green-600 mb-4';
+                    })
+                    .withFailureHandler((err) => {
+                        msgEl.innerText = '⚠️ Rekod disimpan di storan tempatan (Mod Luar Talian).';
+                        msgEl.className = 'text-xs font-bold text-amber-600 mb-4';
+                    })
+                    .savePlayerRecordGAS(recordData);
+            } else {
+                // Fallback simulation mode
+                setTimeout(() => {
+                    msgEl.innerText = '✅ Rekod sedia ada disimpan secara tempatan.';
+                    msgEl.className = 'text-xs font-bold text-blue-600 mb-4';
+                }, 800);
+            }
+        }
+
+        function restartGame() {
+            document.getElementById('modalEndGame').classList.add('hidden');
+            handleStartGame({ preventDefault: () => {} });
+        }
+
+        /* ==================== 7. UI SCREEN NAVIGATION & MODALS ==================== */
+        function showScreen(screenId) {
+            const screens = ['screen-home', 'screen-player-info', 'screen-game'];
+            screens.forEach(s => {
+                const el = document.getElementById(s);
+                if (s === screenId) {
+                    el.classList.remove('hidden');
+                } else {
+                    el.classList.add('hidden');
+                }
+            });
+        }
+
+        function showInstructions() {
+            document.getElementById('modalInstructions').classList.remove('hidden');
+        }
+
+        function closeInstructions() {
+            document.getElementById('modalInstructions').classList.add('hidden');
+        }
+
+        function showLeaderboard() {
+            const modal = document.getElementById('modalLeaderboard');
+            const tbody = document.getElementById('leaderboardBody');
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-slate-400">Memuatkan data kedudukan...</td></tr>';
+            modal.classList.remove('hidden');
+
+            // Fetch from GAS backend if available, else local
+            if (typeof google !== 'undefined' && google.script && google.script.run) {
+                google.script.run
+                    .withSuccessHandler(renderLeaderboardTable)
+                    .withFailureHandler(() => renderLeaderboardTable(localLeaderboard))
+                    .getLeaderboardGAS();
+            } else {
+                renderLeaderboardTable(localLeaderboard);
+            }
+        }
+
+        function renderLeaderboardTable(data) {
+            const tbody = document.getElementById('leaderboardBody');
+            tbody.innerHTML = '';
+
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-slate-400">Tiada rekod ditemui.</td></tr>';
+                return;
+            }
+
+            data.forEach((row, idx) => {
+                const tr = document.createElement('tr');
+                tr.className = idx % 2 === 0 ? 'bg-slate-50' : 'bg-white';
+
+                let medal = idx + 1;
+                if (idx === 0) medal = '🥇 1';
+                else if (idx === 1) medal = '🥈 2';
+                else if (idx === 2) medal = '🥉 3';
+
+                tr.innerHTML = `
+                    <td class="p-3 font-bold">${medal}</td>
+                    <td class="p-3 font-bold text-myBlue">${row.name}</td>
+                    <td class="p-3">${row.class}</td>
+                    <td class="p-3 font-extrabold text-myRed">${row.score}</td>
+                    <td class="p-3 text-sky-700">${row.time}</td>
+                    <td class="p-3">${row.lives} ❤️</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function closeLeaderboard() {
+            document.getElementById('modalLeaderboard').classList.add('hidden');
+        }
+
+        function toggleAudio() {
+            sounds.enabled = !sounds.enabled;
+            const icon = document.getElementById('iconAudio');
+            if (sounds.enabled) {
+                icon.className = 'fa-solid fa-volume-high text-lg';
+            } else {
+                icon.className = 'fa-solid fa-volume-xmark text-lg text-red-300';
+            }
+        }
+
+        function handleMapError(img) {
+            // Fallback image if wikipedia image fails to render
+            img.src = 'https://placehold.co/1000x520/003399/FFFFFF?text=PETA+MALAYSIA+(13+NEGERI+%2B+3+WILAYAH)';
+        }
+
+        /* Initialize default view */
+        window.addEventListener('load', () => {
+            showScreen('screen-home');
+        });
+    </script>
+</body>
+</html>
